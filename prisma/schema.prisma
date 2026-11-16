@@ -1,0 +1,218 @@
+// Prisma Schema for Smart Job Platform
+// Authoritative relational schema for Worker, Company, Admin, Recruitment, and Notifications.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite" // Set to "postgresql" for live PostgreSQL deployment via DATABASE_URL
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(uuid())
+  phone        String        @unique
+  passwordHash String
+  role         String        // "WORKER" | "COMPANY" | "ADMIN"
+  status       String        @default("ACTIVE") // "PENDING" | "ACTIVE" | "SUSPENDED" | "REJECTED"
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  lastLoginAt  DateTime?
+
+  workerProfile  WorkerProfile?
+  companyProfile CompanyProfile?
+
+  notifications    Notification[]
+  sentMessages     Message[]      @relation("SentMessages")
+  receivedMessages Message[]      @relation("ReceivedMessages")
+  auditLogs        AuditLog[]
+
+  @@index([phone])
+  @@index([role])
+}
+
+model WorkerProfile {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName         String
+  location         String
+  profession       String
+  otherProfessions String?
+  skills           String   @default("")
+  experienceYears  Int      @default(0)
+  experience       String?
+  availability     String   @default("full_time") // "full_time" | "part_time" | "contract"
+  expectedPay      String?
+  languages        String   @default("العربية")
+  bio              String?
+  profileImage     String?
+  assessmentScore  Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  applications Application[]
+  certificates WorkerCertificate[]
+
+  @@index([profession])
+  @@index([location])
+}
+
+model CompanyProfile {
+  id                 String   @id @default(uuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyName        String
+  industry           String?
+  address            String?
+  location           String   @default("مصر")
+  description        String?
+  verificationStatus String   @default("VERIFIED") // "PENDING" | "VERIFIED" | "REJECTED"
+  logo               String?
+  publicContactPhone String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  jobs Job[]
+
+  @@index([companyName])
+  @@index([location])
+}
+
+model Job {
+  id                 String   @id @default(uuid())
+  companyId          String
+  company            CompanyProfile @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  title              String
+  profession         String
+  description        String
+  skills             String?
+  experienceLevel    String
+  experienceYearsMin Int      @default(0)
+  location           String
+  employmentType     String   @default("full_time")
+  salary             String?
+  salaryRange        String?
+  contactPhone       String?
+  status             String   @default("ACTIVE") // "ACTIVE" | "CLOSED" | "DRAFT"
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  applications Application[]
+
+  @@index([profession])
+  @@index([location])
+  @@index([status])
+}
+
+model Application {
+  id            String        @id @default(uuid())
+  workerId      String
+  worker        WorkerProfile @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  jobId         String
+  job           Job           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  status        String        @default("UNDER_REVIEW") // "UNDER_REVIEW" | "ACCEPTED" | "REJECTED"
+  submittedAt   DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  employerNotes String?
+
+  @@unique([workerId, jobId])
+  @@index([workerId])
+  @@index([jobId])
+  @@index([status])
+}
+
+model Notification {
+  id              String    @id @default(uuid())
+  recipientId     String
+  recipient       User      @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  eventType       String    // "WORKER_REGISTERED" | "APPLICATION_SUBMITTED" | "APPLICATION_STATUS_CHANGED" | "AD_REQUEST_CREATED"
+  title           String
+  message         String
+  readAt          DateTime?
+  createdAt       DateTime  @default(now())
+  relatedRecordId String?
+  metadata        String?
+
+  @@index([recipientId])
+  @@index([readAt])
+}
+
+model Message {
+  id             String    @id @default(uuid())
+  senderId       String
+  sender         User      @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  recipientId    String
+  recipient      User      @relation("ReceivedMessages", fields: [recipientId], references: [id], onDelete: Cascade)
+  conversationId String
+  content        String
+  sentAt         DateTime  @default(now())
+  readAt         DateTime?
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([recipientId])
+}
+
+model WorkerCertificate {
+  id                 String        @id @default(uuid())
+  workerId           String
+  worker             WorkerProfile @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  fileReference      String
+  certificateType    String
+  issuer             String
+  issueDate          String?
+  verificationStatus String        @default("VERIFIED")
+  createdAt          DateTime      @default(now())
+
+  @@index([workerId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action     String
+  targetType String
+  targetId   String?
+  timestamp  DateTime @default(now())
+  metadata   String?
+  ipAddress  String?
+  userAgent  String?
+
+  @@index([action])
+  @@index([targetType])
+}
+
+model PublicAdRequest {
+  id          String    @id @default(uuid())
+  companyName String
+  phone       String
+  title       String
+  body        String
+  status      String    @default("PENDING") // "PENDING" | "APPROVED" | "REJECTED"
+  createdAt   DateTime  @default(now())
+  readAt      DateTime?
+
+  @@index([status])
+}
+
+model FileRecord {
+  id           String   @id @default(uuid())
+  originalName String
+  storageKey   String   @unique
+  mimeType     String
+  size         Int
+  accessLevel  String   @default("PRIVATE") // "PUBLIC" | "PRIVATE"
+  category     String   @default("general") // "certificate" | "avatar" | "document" | "bulk" | "general"
+  ownerId      String?
+  ownerPhone   String?
+  publicUrl    String?
+  uploadedAt   DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([accessLevel])
+  @@index([category])
+  @@index([ownerId])
+}
